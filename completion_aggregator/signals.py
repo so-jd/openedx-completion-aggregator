@@ -8,10 +8,11 @@ import logging
 import six
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models.signals import post_save
 
 from . import batch, compat, models
-from .tasks import handler_tasks
+from .tasks import aggregation_tasks, handler_tasks
 
 log = logging.getLogger(__name__)
 
@@ -113,5 +114,20 @@ def completion_updated_handler(signal, sender, instance, created, raw, using, up
         block_key=instance.block_key
     )
     if not getattr(settings, 'COMPLETION_AGGREGATOR_ASYNC_AGGREGATION', False):
-        batch.perform_aggregation()
-        batch.perform_cleanup()
+        # Sync mode: trigger aggregation immediately (near-real-time updates)
+        use_on_commit = getattr(settings, 'COMPLETION_AGGREGATOR_SYNC_USE_ON_COMMIT', True)
+
+        if use_on_commit:
+            transaction.on_commit(
+                lambda: aggregation_tasks.enqueue_user_aggregation(
+                    username=instance.user.username,
+                    course_key=instance.context_key,
+                    block_key=instance.block_key,
+                )
+            )
+        else:
+            # LEGACY MODE (NOT RECOMMENDED - DEADLOCK RISK)
+            # Immediate execution: run aggregation inside the transaction
+            batch.perform_aggregation()
+            batch.perform_cleanup()
+

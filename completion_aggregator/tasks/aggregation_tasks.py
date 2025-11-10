@@ -32,6 +32,52 @@ UPDATE completion_blockcompletion completion, progress_coursemodulecompletion pr
 log = logging.getLogger(__name__)
 
 
+def enqueue_user_aggregation(username, course_key, block_key=None):
+    """
+    Enqueue aggregation task for a single user/course without batch processing overhead.
+
+    This is used by the sync mode signal handler to immediately enqueue a task
+    after a BlockCompletion is saved, bypassing the batch processing logic and
+    cache locking in perform_aggregation().
+
+    Parameters
+    ----------
+        username (str):
+            The user whose aggregators need updating.
+        course_key (str or CourseKey):
+            The course in which the aggregators need updating.
+        block_key (str or UsageKey, optional):
+            The specific block that changed. Can be None for course-wide updates.
+    """
+    from django.conf import settings
+
+    # Convert to string if necessary
+    course_key_str = str(course_key)
+    block_keys = [str(block_key)] if block_key else []
+
+    # Prepare task options
+    task_options = {}
+    routing_key = getattr(settings, 'COMPLETION_AGGREGATOR_ROUTING_KEY', None)
+    if routing_key:
+        task_options['routing_key'] = routing_key
+
+    # Enqueue the task
+    log.info(
+        "Enqueueing aggregation task for user %s in course %s (block: %s)",
+        username, course_key_str, block_key
+    )
+
+    update_aggregators.apply_async(
+        kwargs={
+            'username': username,
+            'course_key': course_key_str,
+            'block_keys': block_keys,
+            'force': False,
+        },
+        **task_options
+    )
+
+
 @shared_task(base=LoggedTask)
 def update_aggregators(username, course_key, block_keys=(), force=False):
     """

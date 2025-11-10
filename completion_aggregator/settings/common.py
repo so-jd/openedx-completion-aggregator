@@ -26,15 +26,19 @@ def plugin_settings(settings):
     # Synchronous completion aggregation is enabled by default
     settings.COMPLETION_AGGREGATOR_ASYNC_AGGREGATION = False
 
+    # Set to False only for backward compatibility testing. NOT RECOMMENDED for production.
+    settings.COMPLETION_AGGREGATOR_SYNC_USE_ON_COMMIT = True
+
     # Names of the batch operations locks
     settings.COMPLETION_AGGREGATOR_AGGREGATION_LOCK = 'COMPLETION_AGGREGATOR_AGGREGATION_LOCK'
     settings.COMPLETION_AGGREGATOR_CLEANUP_LOCK = 'COMPLETION_AGGREGATOR_CLEANUP_LOCK'
 
     # Define how long should the locks be kept. They are released after completing the operation, so there are two
     # possible scenarios for releasing the lock on timeout:
-    # 1. The management command takes more than 1800s - in this case you should set a higher limit for the lock.
+    # 1. The management command takes more than the timeout - in this case you should set a higher limit for the lock.
     # 2. The management command didn't exit successfully. You should check the logs to find out why.
-    settings.COMPLETION_AGGREGATOR_AGGREGATION_LOCK_TIMEOUT_SECONDS = 1800
+    # Reduced from 1800s (30 min) to 300s (5 min) for faster lock release in case of failures.
+    settings.COMPLETION_AGGREGATOR_AGGREGATION_LOCK_TIMEOUT_SECONDS = 300
     settings.COMPLETION_AGGREGATOR_CLEANUP_LOCK_TIMEOUT_SECONDS = 900
 
     # Enables the use of course blocks with a release date set to a future date in the course completion calculation.
